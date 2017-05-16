@@ -11,22 +11,35 @@
 # CLASSDIR = -classpath ../../lib/gurobi.jar:.
 # JFLAG    = -d . $(CLASSDIR)
 
-## comment the above and uncomment this on a mac. 
+# ## comment the above and uncomment this on a mac. 
+# PLATFORM = mac64
+# INC      = -I/Library/gurobi605/mac64/include/ -I/usr/local/include/
+# CC       = gcc
+# CPP      = g++
+# CARGS    = -m64 -g -std=c99
+# CLIB     = -L/Library/gurobi605/mac64/lib/ -lgurobi60
+# RELEASE := $(shell uname -r | cut -f 1 -d .)
+# ifneq ($(RELEASE), 11)
+# 	CPPSTDLIB = -stdlib=libstdc++
+# endif
+# CPPLIB   = -L/Library/gurobi605/mac64lib/ -lgurobi_c++ -lgurobi60 $(CPPSTDLIB)
+# JSRC     = ../java
+# CLASSDIR = -classpath ../../lib/gurobi.jar:.
+# JFLAG    = -d . $(CLASSDIR)
+
+
+
 PLATFORM = mac64
-INC      = -I/Library/gurobi605/mac64/include/ -I/usr/local/include/
+INC      = -I/Library/gurobi702/mac64/include/ -I/usr/local/include/
 CC       = gcc
 CPP      = g++
 CARGS    = -m64 -g -std=c99
-CLIB     = -L/Library/gurobi605/mac64/lib/ -lgurobi60
+CLIB     = -L/Library/gurobi702/mac64/lib/ -lgurobi70
 RELEASE := $(shell uname -r | cut -f 1 -d .)
-ifneq ($(RELEASE), 11)
-	CPPSTDLIB = -stdlib=libstdc++
-endif
-CPPLIB   = -L/Library/gurobi605/mac64lib/ -lgurobi_c++ -lgurobi60 $(CPPSTDLIB)
+CPPLIB   = -L/Library/gurobi605/mac64lib/ -lgurobi_c++ -lgurobi70
 JSRC     = ../java
 CLASSDIR = -classpath ../../lib/gurobi.jar:.
 JFLAG    = -d . $(CLASSDIR)
-
 
 all: callback_c dense_c diet_c facility_c feasopt_c fixanddive_c \
      lp_c lpmethod_c lpmod_c mip1_c mip2_c params_c piecewise_c qcp_c\
@@ -78,11 +91,8 @@ gurobiexample: gurobiexample.c
 cmain: cmain.c
 	$(CC) $(CARGS) -o cmain cmain.c -I$(INC) $(CLIB) -lpthread -lm -lgsl
 
-matrix-cmain: matrix-cmain.c
-	$(CC) $(CARGS) -o matrix-cmain matrix-cmain.c $(INC) $(CLIB) -lpthread -lm -lgsl -lgslcblas -lransampl
-
-wtf-matrix-cmain: wtf-matrix-cmain.c
-	$(CC) $(CARGS) -o wtf-matrix-cmain wtf-matrix-cmain.c $(INC) $(CLIB) -lpthread -lm -lgsl -lgslcblas -lransampl
+main: main.c
+	$(CC) $(CARGS) -o main main.c $(INC) $(CLIB) -lpthread -lm -lgsl -lgslcblas -lransampl
 
 temp-wtf-matrix-cmain: temp-wtf-matrix-cmain.c
 	$(CC) $(CARGS) -o temp-wtf-matrix-cmain temp-wtf-matrix-cmain.c $(INC) $(CLIB) -lpthread -lm -lgsl -lgslcblas -lransampl

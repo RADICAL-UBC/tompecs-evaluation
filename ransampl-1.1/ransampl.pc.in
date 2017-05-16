@@ -1,0 +1,10 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+
+Name: ransampl
+Description: Random number sampling
+Version: @PACKAGE_VERSION@
+Libs: -L${libdir} -lransampl
+Cflags: -I${includedir}

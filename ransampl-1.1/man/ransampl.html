@@ -1,0 +1,127 @@
+<?xml version="1.0" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>ransampl: a C library for random number sampling</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link rev="made" href="mailto:root@localhost" />
+</head>
+
+<body>
+
+
+
+
+
+<link rel="stylesheet" href="podstyle.css" type="text/css" />
+
+<h1 id="NAME">NAME</h1>
+
+<p>ransampl - random number sampling</p>
+
+<h1 id="SYNOPSIS">SYNOPSIS</h1>
+
+<p><b>#include &lt;ransampl.h</b>&gt;</p>
+
+<p><b>ransampl_ws* ransampl_alloc( int</b> <i>n</i> <b>);</b></p>
+
+<p><b>void ransampl_set( ransampl_ws *</b><i>ws</i><b>, double *</b><i>p</i> <b>);</b></p>
+
+<p><b>int ransampl_draw( ransampl_ws *</b><i>ws</i><b>, double</b> <i>ran1</i><b>, double</b> <i>ran2</i> <b>);</b></p>
+
+<p><b>void ransampl_free( ransampl_ws *</b><i>ws</i> <b>);</b></p>
+
+<h1 id="DESCRIPTION">DESCRIPTION</h1>
+
+<p>These routines allow to draw a random index according to given probabilities <i>p</i>[0], .., <i>p</i>[<i>n</i>-1].</p>
+
+<p>The implementation uses the alias method of Walker and Vose in a form given by Schwarz. Using precomputed tables, the cost for a single drawing is only O(1). Therefore this is the recommended method for <i>M</i> drawings if <i>M</i>&gt;&gt;<i>n</i>&gt;&gt;1.</p>
+
+<p>To prepare, a workspace must be allocated by <b>ransampl_alloc</b>, and some tables must be precomputed by <b>ransampl_set</b>. The supplied probabilities <i>p</i> are not requested to be normalized.</p>
+
+<p>For each random drawing, the user must supply two uniform random numbers <i>ran1</i>, <i>ran2</i> to <b>ransampl_draw</b>.</p>
+
+<p>Finally, <b>ransampl_free</b> deallocates the workspace.</p>
+
+<h1 id="EXAMPLE">EXAMPLE</h1>
+
+<p>Draw representative inhabitants according to the given population numbers of nine federal states of Austria. This example is also contained in the source distribution, demo/sampling1.c.</p>
+
+<pre><code>    #include &lt;stdio.h&gt;
+    #include &lt;gsl/gsl_rng.h&gt;
+    #include &quot;ransampl.h&quot;
+    
+    int main()
+    {
+        const int M=1000000;
+        int i, m;
+    
+        // Discrete probability distribution example:
+        const int n = 9;
+        // states of Austria
+        const char* names[] = {
+            &quot;Wien&quot;, &quot;Niederoesterreich&quot;, &quot;Oberoesterreich&quot;,
+            &quot;Tirol&quot;, &quot;Kaernten&quot;, &quot;Salzburg&quot;,
+            &quot;Vorarlberg&quot;, &quot;Burgenland&quot;, &quot;Steiermark&quot; };
+        // inhabitants in millions as of 2011 [www.statistik.at]
+        double p[] = { 1.721573, 1.614661, 1.415020,
+                        .711161,  .558056,  .532713,
+                        .370833,  .285377,  .1211506 };
+    
+        // Initialize random number generator:
+        gsl_rng_env_setup();
+        gsl_rng* rng = gsl_rng_alloc( gsl_rng_default );
+    
+        // Allocate workspace, and precompute tables:
+        printf( &quot;Precomputing tables ...\n&quot; );
+        ransampl_ws* ws = ransampl_alloc( n );
+        ransampl_set( ws, p );
+    
+        // Draw M random samples; accumulate histogram &#39;cumul&#39;:
+        printf( &quot;Drawing %i samples ...\n&quot;, M );
+        double cumul[n];
+        for ( i=0; i&lt;n; ++i )
+            cumul[i] = 0;
+        for ( m=0; m&lt;M; ++m ) {
+            i = ransampl_draw( ws,
+                               gsl_rng_uniform(rng),
+                               gsl_rng_uniform(rng) );
+            cumul[i] += 1;
+        }
+    
+        // Print given probability and obtained frequency:
+        printf( &quot;Result (input-&gt;output):\n&quot;);
+        double sum = 0;
+        for ( int i=0; i&lt;n; ++i )
+            sum += p[i];
+        printf( &quot;  %-18s  %-9s  %-9s  %-9s\n&quot;,
+                &quot;state&quot;, &quot;N (Mio.)&quot;, &quot;rel&quot;, &quot;sim&quot; );
+        for ( int i=0; i&lt;n; ++i )
+            printf( &quot;  %-18s  %9.7f  %9.7f  %9.7f\n&quot;,
+                    names[i], p[i], p[i]/sum, ((double)cumul[i])/M );
+    
+        // Free workspace and terminate:
+        ransampl_free( ws );
+        return 0;
+    }</code></pre>
+
+<h1 id="COPYING">COPYING</h1>
+
+<p>Copyright (C): Joachim Wuttke 2013, Forschungszentrum Juelich GmbH</p>
+
+<p>Software: FreeBSD License</p>
+
+<p>Documentation: Creative Commons Attribution Share Alike</p>
+
+<h1 id="SEE-ALSO">SEE ALSO</h1>
+
+<p>Homepage: http://apps.jcns.fz-juelich.de/ransampl</p>
+
+<p>Please report bugs to the author &lt;j.wuttke@fz-juelich.de&gt;</p>
+
+
+</body>
+
+</html>
+
+

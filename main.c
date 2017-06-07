@@ -65,7 +65,7 @@ int imax(int a, int b) {
 
 double *uunifast(int num_components, double vector_sum) {
   
-  srand(time(NULL));
+  /* srand(time(NULL)); */ //TODO BACK: uncomment
   
   double *uniform_random_vector = calloc(num_components, sizeof(double));
   
@@ -105,7 +105,7 @@ double *generate_execution_time_pmf(int max_execution_time) {
 /* dynamically allocated arrays */
 #define NELEMS(x)  (sizeof(x) / sizeof((x)[0]))
 
-#define NUM_JOBS 3
+#define NUM_JOBS 9
 #define NUM_JOBS_SUBMDP 2
 
 typedef unsigned long ul;
@@ -1290,16 +1290,22 @@ void print_submdp(submdp_t *submdp, int submdp_index) {
   int index = 0;
   for(index = 0; index < NUM_JOBS_SUBMDP; ++index) {
     job_t *j = lookup_job_by_submdp_job_index(submdp, index);
-    printf( "| J%d   deadline: %d, criticality: %d, WCET: %d\n",
+    printf( " J%d   deadline: %d, criticality: %d, WCET: %d\n",
 	    submdp->arr_job_indexes[index],
 	    j->deadline,
 	    j->criticality,
 	    j->wcet);
+    printf("Exec time pmf: ");
+    for(int i = 0; i < j->wcet; ++i) {
+      printf("%f, ", j->execution_time_pmf[i]);
+      
+    }
+    printf("\n\n");
     fflush(stdout);
     
   }
   
-  printf( "| Horizon: %d\n", submdp->horizon);
+  printf( "\n Horizon: %d\n", submdp->horizon);
   fflush(stdout);
   printf("+================================================================\n\n");
   fflush(stdout);
@@ -1590,7 +1596,7 @@ void solve_unconstrained_submdp_exact(submdp_t *submdp) {
   
   /* Create environment */
   
-  error = GRBloadenv(&master_env, "lp.log");
+  error = GRBloadenv(&master_env, NULL);
   if (error) goto QUIT;
   
   /* Create an empty model */
@@ -1654,7 +1660,7 @@ void solve_unconstrained_submdp_exact(submdp_t *submdp) {
   /*                      4: Deterministic Concurrent */
   /* error = GRBsetintparam(model_env, GRB_INT_PAR_METHOD, 0); */
   
-  if (error) goto QUIT;
+  /* if (error) goto QUIT; */
   
   /* Integrate new variables */
   
@@ -1750,14 +1756,18 @@ void solve_unconstrained_submdp_exact(submdp_t *submdp) {
   error = GRBoptimize(submdp->grb_model);
   if (error) goto QUIT;
   
-  /* Write model to 'lp.lp' */
-  
-  error = GRBwrite(submdp->grb_model, "lp.lp");
+  /* Write model to file */
+  char *model_file_name[80];
+  sprintf(model_file_name, "lp-J%d-J%d.lp", submdp->arr_job_indexes[0],
+	  submdp->arr_job_indexes[1]);
+  error = GRBwrite(submdp->grb_model, model_file_name);
   if (error) goto QUIT;
   
   /* Capture solution information */
   
-  error = GRBgetintattr(submdp->grb_model, GRB_INT_ATTR_STATUS, &optimization_status);
+  error = GRBgetintattr(submdp->grb_model,
+			GRB_INT_ATTR_STATUS,
+			&optimization_status);
   if (error) goto QUIT;
 
   if (optimization_status == GRB_OPTIMAL) {
@@ -1783,7 +1793,8 @@ void solve_unconstrained_submdp_exact(submdp_t *submdp) {
     goto QUIT;
     
   } else {
-    printf( "Optimization was stopped early\n");
+    printf( "Optimization was stopped early. Opt status: %d\n",
+	    optimization_status);
     fflush(stdout);
     goto QUIT;
   }
@@ -1800,11 +1811,11 @@ void solve_unconstrained_submdp_exact(submdp_t *submdp) {
   
   /* Free model */
   
-  /* GRBfreemodel(model); */
+  GRBfreemodel(submdp->grb_model);
   
   /* Free environment */
   
-  /* GRBfreeenv(master_env); */
+  GRBfreeenv(master_env);
   
   
 }
@@ -2584,14 +2595,11 @@ void build_approximate_lp() {
   
   /* Free model */
   
-  /* GRBfreemodel(model); */
+  GRBfreemodel(model);
   
   /* Free environment */
   
-  /* GRBfreeenv(master_env); */
-  
-
-  
+  GRBfreeenv(master_env);
   
 }
 
@@ -2701,29 +2709,130 @@ int main(int argc, char *argv[]){
   fdebug = fopen ("debug.txt", "w+");
   
   job_t *job = &arr_jobs[0];
-  job->deadline    = 120;
+  job->deadline    = 1;
   job->criticality = 1;
-  job->wcet = 100;
+  job->wcet = 1;
   job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
   
   job = &arr_jobs[1];
-  job->deadline    = 250;
+  job->deadline    = 2;
   job->criticality = 0;
-  job->wcet = 200;
+  job->wcet = 2;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+  
+  job = &arr_jobs[2];
+  job->deadline    = 2;
+  job->criticality = 2;
+  job->wcet = 1;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+  
+  
+  job = &arr_jobs[3];
+  job->deadline    = 2;
+  job->criticality = 2;
+  job->wcet = 1;
   job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
 
-  job = &arr_jobs[2];
-  job->deadline    = 200;
+  job = &arr_jobs[4];
+  job->deadline    = 1;
+  job->criticality = 1;
+  job->wcet = 1;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+
+  job = &arr_jobs[5];
+  job->deadline    = 1;
+  job->criticality = 1;
+  job->wcet = 1;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+  
+  job = &arr_jobs[6];
+  job->deadline    = 250;
+  job->criticality = 0;
+  job->wcet = 2;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+
+  job = &arr_jobs[7];
+  job->deadline    = 2;
   job->criticality = 2;
-  job->wcet = 500;
+  job->wcet = 1;
   job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
 
   
-  job = &arr_jobs[3];
-  job->deadline    = 200;
+  job = &arr_jobs[8];
+  job->deadline    = 1;
   job->criticality = 2;
-  job->wcet = 150;
+  job->wcet = 2;
   job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+
+  job = &arr_jobs[9];
+  job->deadline    = 1;
+  job->criticality = 1;
+  job->wcet = 2;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+
+
+
+  /* job_t *job = &arr_jobs[0]; */
+  /* job->deadline    = 120; */
+  /* job->criticality = 1; */
+  /* job->wcet = 100; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
+  
+  /* job = &arr_jobs[1]; */
+  /* job->deadline    = 250; */
+  /* job->criticality = 0; */
+  /* job->wcet = 200; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
+  
+  /* job = &arr_jobs[2]; */
+  /* job->deadline    = 200; */
+  /* job->criticality = 2; */
+  /* job->wcet = 500; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
+  
+  
+  /* job = &arr_jobs[3]; */
+  /* job->deadline    = 50; */
+  /* job->criticality = 2; */
+  /* job->wcet = 26; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
+
+  /* job = &arr_jobs[4]; */
+  /* job->deadline    = 1559; */
+  /* job->criticality = 1; */
+  /* job->wcet = 750; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
+
+  /* job = &arr_jobs[5]; */
+  /* job->deadline    = 120; */
+  /* job->criticality = 1; */
+  /* job->wcet = 100; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
+  
+  /* job = &arr_jobs[6]; */
+  /* job->deadline    = 250; */
+  /* job->criticality = 0; */
+  /* job->wcet = 200; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
+
+  /* job = &arr_jobs[7]; */
+  /* job->deadline    = 200; */
+  /* job->criticality = 2; */
+  /* job->wcet = 500; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
+
+  
+  /* job = &arr_jobs[8]; */
+  /* job->deadline    = 50; */
+  /* job->criticality = 2; */
+  /* job->wcet = 26; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
+
+  /* job = &arr_jobs[9]; */
+  /* job->deadline    = 1559; */
+  /* job->criticality = 1; */
+  /* job->wcet = 750; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
   
   print_job_set(); 
   
@@ -2733,7 +2842,9 @@ int main(int argc, char *argv[]){
   // Initialize random number generator:
   gsl_rng_env_setup();
   gsl_rng* rng = gsl_rng_alloc( gsl_rng_default );
-  gsl_rng_set(rng, time(NULL));
+  /* gsl_rng_set(rng, time(NULL)); */
+  
+  gsl_rng_set(rng, 1);
   
   /* Create job execution time distribiutions */
   ransampl_ws *arr_exec_times_ws[NUM_JOBS];
@@ -2806,9 +2917,9 @@ int main(int argc, char *argv[]){
 
       
       
-      double primal_solution =
-	lookup_primal_variable_solution_by_index(submdp, 0);
-      printf("dual variable-0 value: %f\n", primal_solution);
+      /* double primal_solution = */
+      /* 	lookup_primal_variable_solution_by_index(submdp, 0); */
+      /* printf("dual variable-0 value: %f\n", primal_solution); */
       
       arr_submdps[submdp_index] = submdp;
       submdp_index++;
@@ -2817,7 +2928,7 @@ int main(int argc, char *argv[]){
     }
   }
 
-  build_approximate_lp();
+  //build_approximate_lp();
   
   /* compute the coefficient of CDAULP */
   

@@ -24,22 +24,29 @@ Note: You also need autoconf and automake to build ransampl
 
 Gurobi:
 ======
-Gurobi might not find libgurobi65.so when running the simulation binary
+Gurobi might not find libgurobi70.so when running the simulation binary
 
-You need to update LD_LIBRARY_PATH with /opt/gurobi652/linux64/lib.
-Under Ubuntu, the right way to do it is to add a custom .conf file to /etc/ld.so.conf.d, for example
+You need to update LD_LIBRARY_PATH with /opt/gurobi702/linux64/lib.
+Under Ubuntu, the right way to do it is to add a custom .conf file to /etc/ld.so.conf.d; for example,
 
-      sudo emacs /etc/ld.so.conf.d/randomLibs.conf
+      sudo emacs /etc/ld.so.conf.d/baderLibs.conf
       
-inside the file you are supposed to write the complete path to the directory that contains all the libraries that you wish to add to the system, for example
+Inside this file you are supposed to write the complete path to the directory that contains all the libraries that you wish to add to the system, for example,
 
-       /opt/gurobi652/linux64/lib
+       /opt/gurobi702/linux64/lib
        
-Remember to add only the path to the dir, not the full path for the file, all
+Remember to add only the path to the dir, not the full path to the file; all
 the libs inside that path will be automatically indexed.
 
-Save and run
+Now save and run
 
      sudo ldconfig
      
 to update the system with this libs.
+
+Gurobi Lisense: After creating the gurobi license file with the grbgetkey tool, a gurobi.lic file will be generated. Store this file in a location that is in the PATH variable. To update the PATH variable on Ubuntu, modify ~/.bashrc and include the line
+
+       export PATH=$PATH:../
+
+for instance to add ../ to the path. Log out the shell and login again for the changes to take effect.
+

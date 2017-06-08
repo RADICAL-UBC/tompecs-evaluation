@@ -1,4 +1,11 @@
-# Copyright 2014, Gurobi Optimization, Inc.
+# Copyright 2017, Gurobi Optimization, Inc.
+PLATFORM = linux64
+INC      = -I/opt/gurobi702/linux64/include/ -I/usr/local/include/
+CC       = gcc
+CPP      = g++
+CARGS    = -m64 -g -std=c99
+CLIB     = -L/opt/gurobi702/linux64/lib/ -lgurobi70
+
 
 # PLATFORM = linux64
 # INC      = -I/opt/gurobi652/linux64/include/ -I/usr/local/include/
@@ -29,17 +36,17 @@
 
 
 
-PLATFORM = mac64
-INC      = -I/Library/gurobi702/mac64/include/ -I/usr/local/include/
-CC       = gcc
-CPP      = g++
-CARGS    = -m64 -g -std=c99
-CLIB     = -L/Library/gurobi702/mac64/lib/ -lgurobi70
-RELEASE := $(shell uname -r | cut -f 1 -d .)
-CPPLIB   = -L/Library/gurobi605/mac64lib/ -lgurobi_c++ -lgurobi70
-JSRC     = ../java
-CLASSDIR = -classpath ../../lib/gurobi.jar:.
-JFLAG    = -d . $(CLASSDIR)
+# PLATFORM = mac64
+# INC      = -I/Library/gurobi702/mac64/include/ -I/usr/local/include/
+# CC       = gcc
+# CPP      = g++
+# CARGS    = -m64 -g -std=c99
+# CLIB     = -L/Library/gurobi702/mac64/lib/ -lgurobi70
+# RELEASE := $(shell uname -r | cut -f 1 -d .)
+# CPPLIB   = -L/Library/gurobi605/mac64lib/ -lgurobi_c++ -lgurobi70
+# JSRC     = ../java
+# CLASSDIR = -classpath ../../lib/gurobi.jar:.
+# JFLAG    = -d . $(CLASSDIR)
 
 all: callback_c dense_c diet_c facility_c feasopt_c fixanddive_c \
      lp_c lpmethod_c lpmod_c mip1_c mip2_c params_c piecewise_c qcp_c\

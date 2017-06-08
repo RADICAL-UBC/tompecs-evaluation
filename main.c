@@ -69,15 +69,6 @@ double *uunifast(int num_components, double vector_sum) {
   
   double *uniform_random_vector = calloc(num_components, sizeof(double));
   
-  /* for(int index = 0; index < num_components; ++index) { */
-    
-  /*   uniform_random_vector[index] = (double)1/((double)num_components); */
-  /*   printf( "pmf element: %lf\n", uniform_random_vector[index]); */
-    
-  /* } */
-  
-  /* return uniform_random_vector; */
-  
   double sum = vector_sum;
   double next_sum;
   
@@ -158,7 +149,7 @@ typedef struct state_tag {
 
   int type;
   ul index; /* used to index into arr_primal_solution */
-  
+  /* char description[80]; */
 } state;
 
 /* The state of the simulation */
@@ -266,14 +257,14 @@ int *arr_job_indexes_per_criticality[NUM_CRITICALITY_LEVELS];
 
 /* Number of dimensions of the multidimensional array hodling the x,y and 
    vectors: sum of number of compoenents of all x,y*/
-#define NUM_DIMS (2 * NUM_JOBS_SUBMDP)
+#define NUM_DIMS_SUBMDP_STATE_ARRAY (2 * NUM_JOBS_SUBMDP)
 
 
 typedef struct submdp_tag {
 
   /* indexes of the two job structs in arr_jobs */
-  int arr_job_indexes[NUM_JOBS_SUBMDP]; 
-
+  int arr_job_indexes[NUM_JOBS_SUBMDP];
+  
   int horizon;
   
   state *state_tree;
@@ -291,14 +282,14 @@ typedef struct submdp_tag {
   /* state_action_pair_pointer *state_action_pair_ptrs_list; */
   /* state_action_pair_pointer *state_action_pair_ptrs_list_tail; */
   
-  ul dims[NUM_DIMS];
+  ul dims[NUM_DIMS_SUBMDP_STATE_ARRAY];
   
   /* /\* Add also all the solution to the subMDP comprised of these two jobs *\/ */
   /* double    *arr_dual_solution; */
   /* double    *arr_primal_solution; */
 
   GRBmodel *grb_model;
-  
+  int index; //TODO: remove
 } submdp_t;
 
 submdp_t *arr_submdps[NUM_JOB_PAIRS];
@@ -491,10 +482,11 @@ state* add_state(submdp_t *submdp,
 		 char *finish_signal_vector) {
   
   state *s = create_state(type, time);
+  
   s->index = get_total_submdp_state_count(submdp);
   
   if(type == ABSORBING) {
-    
+    /* sprintf(s->description, "mdp%dabsorb-t%d", submdp->index, time); */
     assert( (NUM_JOBS_SUBMDP + 1 <= time) && (time <= submdp->horizon + 1) );
     
     /* printf("num absorbing states: %d, horizon: %d\n", submdp->num_absorbing_states, submdp->horizon); */
@@ -507,6 +499,15 @@ state* add_state(submdp_t *submdp,
     submdp->num_absorbing_states++;
     
   } else if (type == NON_ABSORBING) {
+
+    /* sprintf(s->description, */
+    /* 	    "mdp%dx%dx%dy%dy%dnonabsorbt%d", */
+    /* 	    submdp->index, */
+    /* 	    allocation_vector[0], */
+    /* 	    allocation_vector[1], */
+    /* 	    finish_signal_vector[0], */
+    /* 	    finish_signal_vector[1], */
+    /* 	    time); */
     
     SUBMDP_NONABSORBING_STATE_PTR(submdp,
     				  allocation_vector[0],
@@ -531,7 +532,8 @@ state* add_state(submdp_t *submdp,
   } else {
     submdp->state_tree_tail->next = s;
     submdp->state_tree_tail = submdp->state_tree_tail->next;
-  }  
+  }
+  
   /* if((num_states % 10000000) == 0) { */
   /*   setlocale(LC_NUMERIC, ""); */
   
@@ -558,6 +560,7 @@ void add_state_action_pair(submdp_t *submdp,
   s->admissible_state_action_pairs_list = sap;
   s->num_admissible_saps++;
   
+  /* printf("index: %d, state: %s, action: %d\n", sap->index, s->description, sap->action); /\* debug *\/ */
   
 }
 
@@ -660,8 +663,8 @@ char is_admissible_action(ul *allocation_vector,
 
 
 
-bool have_all_jobs_finished(char *finish_signal_vector) {
-  for(int index = 0; index < NUM_JOBS; ++index) {
+bool have_all_jobs_finished(char *finish_signal_vector, int num_jobs) {
+  for(int index = 0; index < num_jobs; ++index) {
     if(finish_signal_vector[index] == NOT_FINISHED) { return false; }
   }
   return true;
@@ -688,7 +691,7 @@ double compute_transition_probability(submdp_t *submdp,
     assert(next_finish_signal_vector == NULL);
     
     assert((prev_finish_signal_vector == NULL) ||
-	   have_all_jobs_finished(prev_finish_signal_vector));
+	   have_all_jobs_finished(prev_finish_signal_vector, NUM_JOBS_SUBMDP));
     
     prob = 1.0;
     return prob;
@@ -878,9 +881,8 @@ void set_state_action_pair_dual_cost(submdp_t *submdp,
 }
 
 /* If the state to be expanded (root) is such that all jobs finished,
-   then next_allocation_vector = next_finish_signal_vector  = NULL.
-   An absorbing state is never expanded, so root_allocation_vector and
-   root_finish_signal_vector are never NULL */
+   then next_allocation_vector = next_finish_signal_vector  = NULL. */
+
 void _expand(submdp_t *submdp,
 	     state *root_state_ptr,
 	     state_action_pair *root_state_action_pair,
@@ -900,7 +902,7 @@ void _expand(submdp_t *submdp,
   
   state *next_state;
   
-  char next_state_exists = true; 
+  char next_state_existed = true; 
     
   if(action == NO_ACTION) {
     
@@ -912,11 +914,11 @@ void _expand(submdp_t *submdp,
 					    NULL,
 					    NULL);
     
-    if(next_state == NULL) { /* next_state not added yet */
+    if(next_state == NULL || next_state == 0) { /* next_state not added yet */
       
       next_state = add_state(submdp, ABSORBING, next_time, NULL, NULL);
       
-      next_state_exists = false;
+      next_state_existed = false;
       
     }
     
@@ -931,7 +933,7 @@ void _expand(submdp_t *submdp,
 
       
       /* next_state does not exist yet */
-      next_state_exists = false;
+      next_state_existed = false;
       
       next_state = add_state(submdp,
 			     NON_ABSORBING,
@@ -945,7 +947,7 @@ void _expand(submdp_t *submdp,
     
   }
   
-  if((!next_state_exists) && (next_time <= submdp->horizon + 1)) {
+  if((!next_state_existed) && (next_time <= submdp->horizon + 1)) {
     
     expand_state_tree_at(submdp,
 			 next_state,
@@ -1023,7 +1025,7 @@ void expand_state_tree_at(submdp_t *submdp,
   char *next_finish_signal_vector = NULL;
   
   if( (root_state_ptr->type == ABSORBING) ||
-      have_all_jobs_finished(root_finish_signal_vector) ) {
+      have_all_jobs_finished(root_finish_signal_vector, NUM_JOBS_SUBMDP) ) {
     
     /* terminal_state_action_pair->s = next_state; */
 
@@ -1140,6 +1142,8 @@ void build_state_tree(submdp_t *submdp) {
 		       initial_state_ptr,
 		       initial_allocation_vector,
 		       initial_finish_signal_vector);
+
+  assert(submdp->num_absorbing_states == submdp->horizon - NUM_JOBS_SUBMDP + 1);
   
 }
 
@@ -1295,12 +1299,12 @@ void print_submdp(submdp_t *submdp, int submdp_index) {
 	    j->deadline,
 	    j->criticality,
 	    j->wcet);
-    printf("Exec time pmf: ");
-    for(int i = 0; i < j->wcet; ++i) {
-      printf("%f, ", j->execution_time_pmf[i]);
+    /* printf("Exec time pmf: "); */
+    /* for(int i = 0; i < j->wcet; ++i) { */
+    /*   printf("%f, ", j->execution_time_pmf[i]); */
       
-    }
-    printf("\n\n");
+    /* } */
+    /* printf("\n\n"); */
     fflush(stdout);
     
   }
@@ -1584,7 +1588,7 @@ void solve_unconstrained_submdp_exact(submdp_t *submdp) {
   // constraint being constructed.
   // </NOTE>
   int *arr_variable_indexes = calloc(submdp->num_state_action_pairs,
-					  sizeof(int));
+				     sizeof(int));
   
   double *arr_constraint_coefficients = calloc(submdp->num_state_action_pairs,
 					       sizeof(double));
@@ -1624,6 +1628,8 @@ void solve_unconstrained_submdp_exact(submdp_t *submdp) {
       arr_objective_coefficients[sap_list->index] = sap_list->objective_cost;
       
       sap_list = sap_list->next;
+
+      
     } 
     
     submdp->state_tree_tail = submdp->state_tree_tail->next;
@@ -1811,11 +1817,11 @@ void solve_unconstrained_submdp_exact(submdp_t *submdp) {
   
   /* Free model */
   
-  GRBfreemodel(submdp->grb_model);
+  /* GRBfreemodel(submdp->grb_model); */
   
-  /* Free environment */
+  /* /\* Free environment *\/ */
   
-  GRBfreeenv(master_env);
+  /* GRBfreeenv(master_env); */
   
   
 }
@@ -2075,10 +2081,7 @@ double compute_var_coef_in_crit_constraint(int m, int crit) {
 	    
 	    double submdp_variable_solution =
 	      lookup_dual_variable_solution_by_index(submdp, submdp_sap->index);
-
-	    
-	    /* fflush(stdout); /\* debug *\/ */
-	    
+	    	    
 	    if(essentially_equal(submdp_variable_solution, 0)) { continue; }
 	    
 	    int num_legal_error_flags = 0;
@@ -2606,8 +2609,9 @@ void build_approximate_lp() {
 submdp_t *create_submdp() {
   
   submdp_t *submdp = (submdp_t *)malloc(sizeof(submdp_t));
+  
   submdp->horizon = 0;
-
+  
   submdp->state_tree      = NULL;
   submdp->state_tree_tail = NULL;
   
@@ -2708,131 +2712,129 @@ int main(int argc, char *argv[]){
 
   fdebug = fopen ("debug.txt", "w+");
   
-  job_t *job = &arr_jobs[0];
-  job->deadline    = 1;
-  job->criticality = 1;
-  job->wcet = 1;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
-  
-  job = &arr_jobs[1];
-  job->deadline    = 2;
-  job->criticality = 0;
-  job->wcet = 2;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
-  
-  job = &arr_jobs[2];
-  job->deadline    = 2;
-  job->criticality = 2;
-  job->wcet = 1;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
-  
-  
-  job = &arr_jobs[3];
-  job->deadline    = 2;
-  job->criticality = 2;
-  job->wcet = 1;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
-
-  job = &arr_jobs[4];
-  job->deadline    = 1;
-  job->criticality = 1;
-  job->wcet = 1;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
-
-  job = &arr_jobs[5];
-  job->deadline    = 1;
-  job->criticality = 1;
-  job->wcet = 1;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
-  
-  job = &arr_jobs[6];
-  job->deadline    = 250;
-  job->criticality = 0;
-  job->wcet = 2;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
-
-  job = &arr_jobs[7];
-  job->deadline    = 2;
-  job->criticality = 2;
-  job->wcet = 1;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
-
-  
-  job = &arr_jobs[8];
-  job->deadline    = 1;
-  job->criticality = 2;
-  job->wcet = 2;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
-
-  job = &arr_jobs[9];
-  job->deadline    = 1;
-  job->criticality = 1;
-  job->wcet = 2;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
-
-
-
   /* job_t *job = &arr_jobs[0]; */
-  /* job->deadline    = 120; */
+  /* job->deadline    = 1; */
   /* job->criticality = 1; */
-  /* job->wcet = 100; */
+  /* job->wcet = 1; */
   /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
   
   /* job = &arr_jobs[1]; */
-  /* job->deadline    = 250; */
+  /* job->deadline    = 2; */
   /* job->criticality = 0; */
-  /* job->wcet = 200; */
+  /* job->wcet = 2; */
   /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
   
   /* job = &arr_jobs[2]; */
-  /* job->deadline    = 200; */
+  /* job->deadline    = 2; */
   /* job->criticality = 2; */
-  /* job->wcet = 500; */
+  /* job->wcet = 1; */
   /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
   
   
   /* job = &arr_jobs[3]; */
-  /* job->deadline    = 50; */
+  /* job->deadline    = 2; */
   /* job->criticality = 2; */
-  /* job->wcet = 26; */
+  /* job->wcet = 1; */
   /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
 
   /* job = &arr_jobs[4]; */
-  /* job->deadline    = 1559; */
+  /* job->deadline    = 1; */
   /* job->criticality = 1; */
-  /* job->wcet = 750; */
+  /* job->wcet = 1; */
   /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
 
   /* job = &arr_jobs[5]; */
-  /* job->deadline    = 120; */
+  /* job->deadline    = 1; */
   /* job->criticality = 1; */
-  /* job->wcet = 100; */
+  /* job->wcet = 1; */
   /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
   
   /* job = &arr_jobs[6]; */
   /* job->deadline    = 250; */
   /* job->criticality = 0; */
-  /* job->wcet = 200; */
+  /* job->wcet = 2; */
   /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
 
   /* job = &arr_jobs[7]; */
-  /* job->deadline    = 200; */
+  /* job->deadline    = 2; */
   /* job->criticality = 2; */
-  /* job->wcet = 500; */
+  /* job->wcet = 1; */
   /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
 
   
   /* job = &arr_jobs[8]; */
-  /* job->deadline    = 50; */
+  /* job->deadline    = 1; */
   /* job->criticality = 2; */
-  /* job->wcet = 26; */
+  /* job->wcet = 2; */
   /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
 
   /* job = &arr_jobs[9]; */
-  /* job->deadline    = 1559; */
+  /* job->deadline    = 1; */
   /* job->criticality = 1; */
-  /* job->wcet = 750; */
+  /* job->wcet = 2; */
   /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
+
+  job_t *job = &arr_jobs[0];
+  job->deadline    = 120;
+  job->criticality = 1;
+  job->wcet = 100;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+  
+  job = &arr_jobs[1];
+  job->deadline    = 250;
+  job->criticality = 0;
+  job->wcet = 200;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+  
+  job = &arr_jobs[2];
+  job->deadline    = 200;
+  job->criticality = 2;
+  job->wcet = 500;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+  
+  
+  job = &arr_jobs[3];
+  job->deadline    = 50;
+  job->criticality = 2;
+  job->wcet = 26;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+
+  job = &arr_jobs[4];
+  job->deadline    = 1559;
+  job->criticality = 1;
+  job->wcet = 750;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+
+  job = &arr_jobs[5];
+  job->deadline    = 120;
+  job->criticality = 1;
+  job->wcet = 100;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+  
+  job = &arr_jobs[6];
+  job->deadline    = 250;
+  job->criticality = 0;
+  job->wcet = 200;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+
+  job = &arr_jobs[7];
+  job->deadline    = 200;
+  job->criticality = 2;
+  job->wcet = 500;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+
+  
+  job = &arr_jobs[8];
+  job->deadline    = 50;
+  job->criticality = 2;
+  job->wcet = 26;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+
+  job = &arr_jobs[9];
+  job->deadline    = 1559;
+  job->criticality = 1;
+  job->wcet = 750;
+  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
   
   print_job_set(); 
   
@@ -2883,7 +2885,7 @@ int main(int argc, char *argv[]){
 	
       }
       
-      for(index = NUM_JOBS_SUBMDP; index < NUM_DIMS; ++index) {
+      for(index = NUM_JOBS_SUBMDP; index < NUM_DIMS_SUBMDP_STATE_ARRAY;++index){
 	submdp->dims[index] = MAX_FINISH_SIGNAL;
 	state_array_size *= submdp->dims[index];
       }
@@ -2902,20 +2904,21 @@ int main(int argc, char *argv[]){
 	calloc(submdp->horizon - NUM_JOBS_SUBMDP + 1, sizeof(state*));
 
       
-      print_submdp(submdp, submdp_index + 1);
+      print_submdp(submdp, submdp_index);
       
       printf( "Creating state tables ...\n");
       fflush(stdout);
       
       build_state_tree(submdp);
       
+      
+      /* printf("\nnum absorbing states: %d\n", submdp->num_absorbing_states); */
+      
       setlocale(LC_NUMERIC, "");
       printf( "Building LP\nNumber of variables: %'lu\nNumber of constraints: %'lu\n", submdp->num_state_action_pairs, get_total_submdp_state_count(submdp));
       fflush(stdout);
       
       solve_unconstrained_submdp_exact(submdp);
-
-      
       
       /* double primal_solution = */
       /* 	lookup_primal_variable_solution_by_index(submdp, 0); */
@@ -2928,7 +2931,7 @@ int main(int argc, char *argv[]){
     }
   }
 
-  //build_approximate_lp();
+  build_approximate_lp();
   
   /* compute the coefficient of CDAULP */
   

@@ -2380,7 +2380,7 @@ double compute_var_coef_in_obj(int m) {
 
 double compute_var_coef_in_constraint(int var_index, int constraint_index) {
   
-  double coef = 0.0;
+  double coef = 0.0; // This is Upsilon_{m,k} - \Psi_{m, k} in the paper.
   submdp_t *submdp_var        = arr_submdps[var_index];
   submdp_t *submdp_constraint = arr_submdps[constraint_index];
   
@@ -2388,10 +2388,10 @@ double compute_var_coef_in_constraint(int var_index, int constraint_index) {
 
   int num_jobs = NUM_JOBS;
   
-  double coef_term1 = 0.0;
+  double coef_term1 = 0.0; // This is Upsilon_{m,k} in the paper.
 
-  double coef_term1_absorbing_case    = 0.0;
-  double coef_term1_nonabsorbing_case = 0.0;
+  double coef_term1_absorbing_case    = 0.0; // Upsilon_{m,k}' in the paper
+  double coef_term1_nonabsorbing_case = 0.0; // Upsilon_{m,k}'' in the paper
 
   /* compute coef_term1_absorbing_case */ 
   int time;
@@ -2609,6 +2609,8 @@ double compute_var_coef_in_constraint(int var_index, int constraint_index) {
       }
     }
   } else {
+
+    // TODO: test
     
     /* two cases, depending on whether or not submdp_var and submdp_constraint
        have a job in common */
@@ -2826,14 +2828,12 @@ double compute_var_coef_in_constraint(int var_index, int constraint_index) {
   
   
   coef_term1 = coef_term1_absorbing_case + coef_term1_nonabsorbing_case;
+
+  
+  double coef_term2 = 0.0; // This is Psi_{m,k} in the paper
   
   
-  
-  double coef_term2 = 0.0;
-  
-  
-  
-  coef = coef_term1 + coef_term2;
+  coef = coef_term1 - coef_term2;
   
   return coef;
 }

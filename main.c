@@ -17,6 +17,10 @@
 
 #define NO_ACTION -1 
 
+#define _debug(format, ...)					\
+  printf(format " %s %d", __VA_ARGS__, __FILE__, __LINE__)
+
+
 FILE *fdebug;
 
   
@@ -96,13 +100,13 @@ double *generate_execution_time_pmf(int max_execution_time) {
 /* dynamically allocated arrays */
 #define NELEMS(x)  (sizeof(x) / sizeof((x)[0]))
 
-#define NUM_JOBS 9
+#define NUM_JOBS 2
 #define NUM_JOBS_SUBMDP 2
 
 typedef unsigned long ul;
 
-/* A jobs criticality can be any of { 0, ..., NUM_CRITICALITY_LEVELS - 1 } */
-#define NUM_CRITICALITY_LEVELS 3
+/* A job's criticality can be any of { 0, ..., NUM_CRITICALITY_LEVELS - 1 } */
+#define NUM_CRITICALITY_LEVELS 2
 char arr_num_jobs_of_criticality[NUM_CRITICALITY_LEVELS];
 
 
@@ -1830,17 +1834,34 @@ void solve_unconstrained_submdp_exact(submdp_t *submdp) {
 /* Here the vectors are for the 2 jobs as they appearin the submdp. 
    submdp_action is index of a job relative to the 
    submdp; i.e., 0 or 1, and the global job index in arr_jobs must be 
-   determined */ 
+   determined */
+/* time is irrelevant (not used) when the state is non-absorbing, so it is
+   safe to send in zero, although this is semantically inaccurate. */
 state_action_pair *lookup_submdp_sap_by_params(submdp_t *submdp,
+					       int state_type,
+					       int time,
 					       ul *submdp_allocation_vector,
 					       char *submdp_finish_signal_vector,
 					       int submdp_action) {
-  state *submdp_state =
-    lookup_state_ptr_by_params(submdp,
-			       NON_ABSORBING,
-			       NULL,
-			       submdp_allocation_vector,
-			       submdp_finish_signal_vector);
+  state *submdp_state;
+  
+  if(state_type == ABSORBING) {
+    assert(submdp_action == NO_ACTION);
+    submdp_state = lookup_state_ptr_by_params(submdp,
+					      ABSORBING,
+					      time,
+					      submdp_allocation_vector,
+					      submdp_finish_signal_vector);
+  } else {
+    
+    submdp_state =
+      lookup_state_ptr_by_params(submdp,
+				 NON_ABSORBING,
+				 NULL,
+				 submdp_allocation_vector,
+				 submdp_finish_signal_vector);
+    
+  }
   
   assert(submdp_state != NULL && submdp_state != 0);
   state_action_pair *admissible_saps_list =
@@ -1978,8 +1999,6 @@ double compute_var_coef_in_crit_constraint(int m, int crit) {
       int i;
       for(i = 0; i < num_jobs; ++i) {
 	
-	if(i == job1_index || i == job2_index) { continue; }
-	
 	finish_signal_vector[i] = NOT_FINISHED;
 	
       }
@@ -2073,8 +2092,10 @@ double compute_var_coef_in_crit_constraint(int m, int crit) {
 	      continue;
 	    }
 	    
-	    state_action_pair* submdp_sap =
+	    state_action_pair *submdp_sap =
 	      lookup_submdp_sap_by_params(submdp,
+					  NON_ABSORBING,
+					  NULL,
 					  submdp_allocation_vector,
 					  submdp_finish_signal_vector,
 					  submdp_action);
@@ -2146,12 +2167,14 @@ double compute_var_coef_in_obj(int m) {
   char *finish_signal_vector  = calloc(num_jobs, sizeof(char));
   
   /* Loop over all n jobs */
+
+  printf("here \n\n"); /* debug */
   
   int global_job_index;
   for(global_job_index = 0; global_job_index < NUM_JOBS; ++global_job_index){
     
     time = arr_jobs[global_job_index].deadline;
-    
+    printf("time=%d", time);
     if(time > submdp->horizon) { continue; }
     
     /* now generate pairs of execution times whose sum is t */
@@ -2179,8 +2202,6 @@ double compute_var_coef_in_obj(int m) {
       
       int i;
       for(i = 0; i < num_jobs; ++i) {
-	
-	if(i == job1_index || i == job2_index) { continue; }
 	
 	finish_signal_vector[i] = NOT_FINISHED;
 	
@@ -2311,6 +2332,8 @@ double compute_var_coef_in_obj(int m) {
 	    
 	    state_action_pair* submdp_sap =
 	      lookup_submdp_sap_by_params(submdp,
+					  NON_ABSORBING,
+					  0,
 					  submdp_allocation_vector,
 					  submdp_finish_signal_vector,
 					  submdp_action);
@@ -2353,6 +2376,466 @@ double compute_var_coef_in_obj(int m) {
   return coef; 
   
   
+}
+
+double compute_var_coef_in_constraint(int var_index, int constraint_index) {
+  
+  double coef = 0.0;
+  submdp_t *submdp_var        = arr_submdps[var_index];
+  submdp_t *submdp_constraint = arr_submdps[constraint_index];
+  
+  int max_time = imin(submdp_var->horizon, submdp_constraint->horizon);
+
+  int num_jobs = NUM_JOBS;
+  
+  double coef_term1 = 0.0;
+
+  double coef_term1_absorbing_case    = 0.0;
+  double coef_term1_nonabsorbing_case = 0.0;
+
+  /* compute coef_term1_absorbing_case */ 
+  int time;
+  for(time = NUM_JOBS_SUBMDP + 1; time <= max_time + 1; ++time) {
+    
+    state_action_pair *sap = lookup_submdp_sap_by_params(submdp_var,
+							 ABSORBING,
+							 time,
+							 NULL,
+							 NULL,
+							 NO_ACTION);
+    double dual_basis_var_solution =
+      lookup_dual_variable_solution_by_index(submdp_var, sap->index);
+    
+    state *constraint_state = lookup_absorbing_state_ptr(submdp_constraint,
+							 time); 
+    
+    double primal_basis_var_solution =
+      lookup_primal_variable_solution_by_index(submdp_constraint,
+					       constraint_state->index);
+    
+    coef_term1_absorbing_case +=
+      dual_basis_var_solution * primal_basis_var_solution;
+    
+    printf("%f\n", primal_basis_var_solution); /* debug */
+    
+  }
+
+  ul *allocation_vector;
+  char *finish_signal_vector;
+  
+  /* compute coef_term1_nonabsorbing_case */
+  if(var_index == constraint_index) {
+
+    submdp_t *submdp = submdp_var;
+    int job1_global_index = submdp_var->arr_job_indexes[0];
+    int job2_global_index = submdp_var->arr_job_indexes[1];
+    
+    job_t *job1 = lookup_job_by_submdp_job_index(submdp, 0);
+    job_t *job2 = lookup_job_by_submdp_job_index(submdp, 1);
+    
+    int alloc1;
+    int alloc2;
+    
+    ul *allocation_vector       = calloc(num_jobs, sizeof(ul)); 
+    char *finish_signal_vector  = calloc(num_jobs, sizeof(char));
+    
+    
+    for(time = 0; time < submdp->horizon; ++time) {
+      
+      /* now generate pairs of execution times whose sum is t */
+      if((job1->wcet + job2->wcet) < time) { continue; } //TODO: Change to break insteas of continue
+      
+      /* here we are looping the submdp actions (0 and 1) only because 
+	 rho(..., a) = 0 for other actions. submdp_action is {0,1} and it 
+	 corresponds to the action's index from the submdp prespective; 
+	 the actual job corrresponding to submdp_action in arr_jobs is
+	 submdp->arr_job_indexes[submdp_action] */
+      
+      for(alloc1 = 0; alloc1 <= imin((int)time, (int)job1->wcet); ++alloc1) {
+	/* printf("%d, %d\n", a, imin(sum - a, b_limit)); */
+	alloc2 = imin((int)time - alloc1, (int)job2->wcet);
+	
+	
+	if(alloc1 + alloc1 != time) { continue; }
+	
+	/* now we have two legal allocations alloc1 and alloc2 for jobs
+	   job1 and job2 of the submdp, respectively. */
+
+	allocation_vector[job1_global_index] = alloc1;
+	allocation_vector[job2_global_index] = alloc2;
+	
+	int i;
+	for(i = 0; i < num_jobs; ++i) {
+	  
+	  finish_signal_vector[i] = NOT_FINISHED;
+	  
+	}
+	
+      /* Now loop through all the possible values for the finish signals
+	 of job1 and job2, which are (0, 0), (0, 1), (1,0), (1,1) */
+	
+	int num_possible_finish_signals_job1 = 0;
+	int num_possible_finish_signals_job2 = 0;
+	
+	char *arr_possible_finish_signals_job1;
+	char *arr_possible_finish_signals_job2;
+	
+	/* If allocn = 0 for any n, then jobn cannot have a finish signal
+	   of FINISHED. Also if allocn = wcetn for any n, then job n cannot
+	   have finish signal NOT_FINISHED */
+	if(alloc1 == 0 || alloc1 == job1->wcet) {
+	
+	num_possible_finish_signals_job1 = 1;
+	arr_possible_finish_signals_job1 =
+	  calloc(num_possible_finish_signals_job1, sizeof(char));
+	
+	if(alloc1 == 0) {
+	  arr_possible_finish_signals_job1[0] = NOT_FINISHED;
+	} else {
+	  arr_possible_finish_signals_job1[0] = FINISHED;
+	}
+	
+      } else { /* 0 < alloc < wcet */
+	
+	num_possible_finish_signals_job1 = 2;
+	arr_possible_finish_signals_job1 =
+	  calloc(num_possible_finish_signals_job1, sizeof(char));
+	arr_possible_finish_signals_job1[0] = NOT_FINISHED;
+	arr_possible_finish_signals_job1[1] = FINISHED;
+	
+      }	
+      
+      if(alloc2 == 0 || alloc2 == job2->wcet) {
+	
+	num_possible_finish_signals_job2 = 1;
+	arr_possible_finish_signals_job2 =
+	  calloc(num_possible_finish_signals_job2, sizeof(char));
+	
+	if(alloc2 == 0) {
+	  arr_possible_finish_signals_job2[0] = NOT_FINISHED;
+	} else {
+	  arr_possible_finish_signals_job2[0] = FINISHED;
+	}
+	
+      } else { /* 0 < alloc < wcet */
+	
+	num_possible_finish_signals_job2 = 2;
+	arr_possible_finish_signals_job2 =
+	  calloc(num_possible_finish_signals_job2, sizeof(char));
+	arr_possible_finish_signals_job2[0] = NOT_FINISHED;
+	arr_possible_finish_signals_job2[1] = FINISHED;
+	
+      }	
+      
+      
+      int j;
+      for(i = 0; i < num_possible_finish_signals_job1; i++) {
+	for(j = 0; j < num_possible_finish_signals_job2; j++) {
+	  
+	  finish_signal_vector[job1_global_index] =
+	    arr_possible_finish_signals_job1[i];
+	  
+	  finish_signal_vector[job2_global_index] =
+	    arr_possible_finish_signals_job2[j];
+	  
+	  ul *submdp_allocation_vector = calloc(NUM_JOBS_SUBMDP, sizeof(ul));
+	  char *submdp_finish_signal_vector =
+	    calloc(NUM_JOBS_SUBMDP, sizeof(char));
+	  
+	  submdp_allocation_vector[0] = allocation_vector[job1_global_index];
+	  submdp_allocation_vector[1] = allocation_vector[job2_global_index];
+	  
+	  submdp_finish_signal_vector[0] = finish_signal_vector[job1_global_index];
+	  submdp_finish_signal_vector[1] = finish_signal_vector[job2_global_index];
+	  
+	  
+	  int submdp_action;
+	  for(submdp_action = 0;
+	      submdp_action < NUM_JOBS_SUBMDP;
+	      ++submdp_action) {
+	    
+	    if(!is_admissible_action(submdp_allocation_vector,
+				     submdp_finish_signal_vector,
+				     submdp_action)) {
+	      continue;
+	    }
+	    
+	    state_action_pair *submdp_sap =
+	      lookup_submdp_sap_by_params(submdp,
+					  NON_ABSORBING,
+					  NULL,
+					  submdp_allocation_vector,
+					  submdp_finish_signal_vector,
+					  submdp_action);
+
+	    
+	    double dual_basis_variable_solution =
+	      lookup_dual_variable_solution_by_index(submdp, submdp_sap->index);
+	    
+	    double primal_basis_variable_solution =
+	      lookup_primal_variable_solution_by_index(submdp,
+						       submdp_sap->s->index);
+	    
+	    double basis_functions_product =
+	      dual_basis_variable_solution * primal_basis_variable_solution;
+	      
+	    if(essentially_equal(basis_functions_product, 0)) { continue; }
+	    
+	    int num_legal_error_flags = 0;
+	    
+	    int crit_level;
+	    for(crit_level = 0; crit_level < NUM_CRITICALITY_LEVELS;
+		++crit_level){
+	      
+	      num_legal_error_flags +=
+		get_num_legal_error_flags_for_crit(time,
+						   allocation_vector,
+						   finish_signal_vector,
+						   crit_level);
+	      
+	      
+	    }
+	    
+	    coef_term1_nonabsorbing_case +=
+	      (double) num_legal_error_flags * basis_functions_product;
+	    
+	  }
+
+	  free(submdp_allocation_vector);
+	  free(submdp_finish_signal_vector);
+	  
+	}
+      }
+      }
+    }
+  } else {
+    
+    /* two cases, depending on whether or not submdp_var and submdp_constraint
+       have a job in common */
+    int common_job_submdp_var_index	   = -1;
+    int common_job_submdp_constraint_index = -1;
+    int common_job_global_index		   = -1;
+    
+    /* identify the common job if one exists */
+    for(int i = 0; i < NUM_JOBS_SUBMDP; ++i) {
+      for(int j = 0; i < NUM_JOBS_SUBMDP; ++j) {
+	if(submdp_var->arr_job_indexes[i] ==
+	   submdp_constraint->arr_job_indexes[j]) {
+	  
+	  common_job_submdp_var_index	     = i;
+	  common_job_submdp_constraint_index = j;
+	  common_job_global_index	     = submdp_var->arr_job_indexes[i];
+	  break;
+	  
+	}
+      }
+    }
+    char common_job_exists = (common_job_global_index != -1);
+    if(common_job_exists) {
+      
+      int uncommon_job_submdp_var_index = 1 - common_job_submdp_var_index;
+      int uncommon_job_submdp_constraint_index =
+	1 - common_job_submdp_constraint_index;
+      
+      job_t *common_job = &arr_jobs[common_job_global_index];
+      job_t *uncommon_job_submdp_var =
+	lookup_job_by_submdp_job_index(submdp_var,
+				       uncommon_job_submdp_var_index);
+      
+      job_t *uncommon_job_submdp_constraint =
+	lookup_job_by_submdp_job_index(submdp_constraint,
+				       uncommon_job_submdp_constraint_index);
+      
+      int uncommon_job_submdp_var_global_index =
+	submdp_var->arr_job_indexes[uncommon_job_submdp_var_index];
+      
+      int uncommon_job_submdp_constraint_global_index =
+	submdp_constraint->
+	arr_job_indexes[uncommon_job_submdp_constraint_index];
+      
+      for(time = 0; time <= max_time + 1; ++time) {
+	
+	int alloc_common_job = time;
+	
+	allocation_vector     = calloc(num_jobs, sizeof(ul)); 
+	finish_signal_vector  = calloc(num_jobs, sizeof(char)); 
+	
+	allocation_vector[common_job_global_index] = alloc_common_job;
+	
+	/* allocation_vector[uncommon_job_submdp_var_global_index] = */
+	/*   alloc_uncommon_jobs; */
+	
+	/* allocation_vector[uncommon_job_submdp_constraint_global_index] = */
+	/*   alloc_uncommon_jobs; */
+	
+	for(int i = 0; i < num_jobs; ++i) {
+	  
+	  finish_signal_vector[i] = NOT_FINISHED;
+	  
+	}
+	
+	/* Now set finish signals for each job properly */
+	
+	int num_possible_finish_signals_common_job = 0;
+	
+	
+	char *arr_possible_finish_signals_common_job;
+	
+	/* If allocn = 0 for any n, then jobn cannot have a finish signal
+	   of FINISHED. Also if allocn = wcetn for any n, then job n cannot
+	   have finish signal NOT_FINISHED */
+	if(alloc_common_job == 0 || alloc_common_job == common_job->wcet) {
+	  
+	  num_possible_finish_signals_common_job = 1;
+	  arr_possible_finish_signals_common_job =
+	    calloc(num_possible_finish_signals_common_job, sizeof(char));
+	  
+	  if(alloc_common_job == 0) {
+	    arr_possible_finish_signals_common_job[0] = NOT_FINISHED;
+	  } else {
+	    assert(alloc_common_job == common_job->wcet);
+	    arr_possible_finish_signals_common_job[0] = FINISHED;
+	  }
+	  
+	} else { /* 0 < alloc < wcet */
+	  
+	  num_possible_finish_signals_common_job = 2;
+	  arr_possible_finish_signals_common_job =
+	    calloc(num_possible_finish_signals_common_job, sizeof(char));
+	  arr_possible_finish_signals_common_job[0] = NOT_FINISHED;
+	  arr_possible_finish_signals_common_job[1] = FINISHED;
+	  
+	}	      
+	
+	
+	for(int j = 0; j < num_possible_finish_signals_common_job; j++) {
+	  
+	  finish_signal_vector[common_job_global_index] =
+	    arr_possible_finish_signals_common_job[j];
+	  
+	  ul *alloc_vector_submdp_var =
+	    calloc(NUM_JOBS_SUBMDP, sizeof(ul));
+	  
+	  char *finish_signal_vector_submdp_var =
+	    calloc(NUM_JOBS_SUBMDP, sizeof(char));
+	  
+	  alloc_vector_submdp_var[common_job_submdp_var_index] =
+	    alloc_common_job;
+	  
+	  finish_signal_vector_submdp_var[common_job_submdp_var_index] =
+	    finish_signal_vector[common_job_global_index];
+	  
+	  finish_signal_vector_submdp_var[uncommon_job_submdp_var_index] =
+	    NOT_FINISHED;
+	  
+	  
+	  ul *alloc_vector_submdp_constraint =
+	    calloc(NUM_JOBS_SUBMDP, sizeof(ul));
+	  
+	  char *finish_signal_vector_submdp_constraint =
+	    calloc(NUM_JOBS_SUBMDP, sizeof(char));
+	  
+	  alloc_vector_submdp_constraint[common_job_submdp_constraint_index] =
+	    alloc_common_job;
+	  
+	  finish_signal_vector_submdp_constraint
+	    [common_job_submdp_constraint_index] =
+	    finish_signal_vector[common_job_global_index];
+	  
+	  finish_signal_vector_submdp_constraint
+	    [uncommon_job_submdp_constraint_index] = NOT_FINISHED;
+	  
+	  int submdp_action;
+	  for(submdp_action = 0;
+	      submdp_action < NUM_JOBS_SUBMDP;
+	      ++submdp_action) {
+	    
+	    if(!is_admissible_action(alloc_vector_submdp_var,
+				     finish_signal_vector_submdp_var,
+				     submdp_action)) {
+	      continue;
+	    }
+	    
+	    state_action_pair *submdp_var_sap =
+	      lookup_submdp_sap_by_params(submdp_var,
+					  NON_ABSORBING,
+					  NULL,
+					  alloc_vector_submdp_var,
+					  finish_signal_vector_submdp_var,
+					  submdp_action);
+	    
+	    double dual_basis_var_solution =
+	      lookup_dual_variable_solution_by_index(submdp_var,
+						     submdp_var_sap->index);
+	    
+	    state *constraint_state =
+	      lookup_state_ptr_by_params(submdp_constraint,
+					 NON_ABSORBING,
+					 time,
+					 alloc_vector_submdp_constraint,
+					 finish_signal_vector_submdp_constraint);
+	    
+	    double primal_basis_var_solution =
+	      lookup_primal_variable_solution_by_index(submdp_constraint,
+						       constraint_state->index);
+	    
+	    double basis_functions_product =
+	      dual_basis_var_solution * primal_basis_var_solution;
+	    
+	    if(essentially_equal(basis_functions_product, 0)) { continue; }
+	    
+	    int num_legal_error_flags = 0;
+	    
+	    int crit_level;
+	    for(crit_level = 0; crit_level < NUM_CRITICALITY_LEVELS;
+		++crit_level){
+	      
+	      num_legal_error_flags +=
+		get_num_legal_error_flags_for_crit(time,
+						   allocation_vector,
+						   finish_signal_vector,
+						   crit_level);
+	      
+	      
+	    } 
+	    
+	    coef_term1_nonabsorbing_case +=
+	      (double) num_legal_error_flags * basis_functions_product;
+	    
+	  }
+	  
+	  free(alloc_vector_submdp_var);
+	  free(alloc_vector_submdp_constraint);
+	  free(finish_signal_vector_submdp_var);
+	  free(finish_signal_vector_submdp_constraint);
+	}
+	
+      }
+      /* finish intersecting jobs case here */
+      
+      
+    } else {
+      
+      coef_term1_nonabsorbing_case =
+	lookup_primal_variable_solution_by_index(submdp_constraint, 0);
+      
+    }
+    
+  }
+  
+  
+  
+  coef_term1 = coef_term1_absorbing_case + coef_term1_nonabsorbing_case;
+  
+  
+  
+  double coef_term2 = 0.0;
+  
+  
+  
+  coef = coef_term1 + coef_term2;
+  
+  return coef;
 }
 
 double arr_error_upper_bounds[NUM_CRITICALITY_LEVELS] = {0.3, 0.4, 0.5};
@@ -2467,14 +2950,16 @@ void build_approximate_lp() {
   
   /* Compute the coefficients of v_m for every m in the K_D constraints 
      B^{T}A^{T}Dv = B^{T}e_{s_0} */
-  int k;
+  
+  int k; /* k is the constraint index */
+  
   for(k = 0; k < num_submpds; ++k) {
     
     num_nonzero_var_coefs = 0;
     
-    for(m = 0; m < num_submpds; ++m) {
+    for(m = 0; m < num_submpds; ++m) { /* m is the mth variable */
       
-      double coef_var_m_in_k_constraint = 0.0;
+      double coef_var_m_in_k_constraint = compute_var_coef_in_constraint(m, k);
       
       if(definitely_greater_than(coef_var_m_in_k_constraint, 0.0)) {
 	
@@ -2498,10 +2983,8 @@ void build_approximate_lp() {
     			 NULL);
     if (error) goto QUIT;
     
-  }
-  
-  
-  
+  }  
+
   
   
   /* Change objective sense to minimization */
@@ -2700,7 +3183,7 @@ int play() {
       printf("%d, %d\n", a, b);
     }
   }
-  //back
+  
   /*       for(b = 0; b <= fmin(sum - a, arr_jobs[1].wcet); ++b) */
   
 }
@@ -2786,55 +3269,55 @@ int main(int argc, char *argv[]){
   job->wcet = 200;
   job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
   
-  job = &arr_jobs[2];
-  job->deadline    = 200;
-  job->criticality = 2;
-  job->wcet = 500;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+  /* job = &arr_jobs[2]; */
+  /* job->deadline    = 200; */
+  /* job->criticality = 2; */
+  /* job->wcet = 500; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
   
   
-  job = &arr_jobs[3];
-  job->deadline    = 50;
-  job->criticality = 2;
-  job->wcet = 26;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+  /* job = &arr_jobs[3]; */
+  /* job->deadline    = 50; */
+  /* job->criticality = 2; */
+  /* job->wcet = 26; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
 
-  job = &arr_jobs[4];
-  job->deadline    = 1559;
-  job->criticality = 1;
-  job->wcet = 750;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+  /* job = &arr_jobs[4]; */
+  /* job->deadline    = 1559; */
+  /* job->criticality = 1; */
+  /* job->wcet = 750; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
 
-  job = &arr_jobs[5];
-  job->deadline    = 120;
-  job->criticality = 1;
-  job->wcet = 100;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+  /* job = &arr_jobs[5]; */
+  /* job->deadline    = 120; */
+  /* job->criticality = 1; */
+  /* job->wcet = 100; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
   
-  job = &arr_jobs[6];
-  job->deadline    = 250;
-  job->criticality = 0;
-  job->wcet = 200;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+  /* job = &arr_jobs[6]; */
+  /* job->deadline    = 250; */
+  /* job->criticality = 0; */
+  /* job->wcet = 200; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
 
-  job = &arr_jobs[7];
-  job->deadline    = 200;
-  job->criticality = 2;
-  job->wcet = 500;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+  /* job = &arr_jobs[7]; */
+  /* job->deadline    = 200; */
+  /* job->criticality = 2; */
+  /* job->wcet = 500; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
 
   
-  job = &arr_jobs[8];
-  job->deadline    = 50;
-  job->criticality = 2;
-  job->wcet = 26;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+  /* job = &arr_jobs[8]; */
+  /* job->deadline    = 50; */
+  /* job->criticality = 2; */
+  /* job->wcet = 26; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
 
-  job = &arr_jobs[9];
-  job->deadline    = 1559;
-  job->criticality = 1;
-  job->wcet = 750;
-  job->execution_time_pmf = generate_execution_time_pmf(job->wcet);
+  /* job = &arr_jobs[9]; */
+  /* job->deadline    = 1559; */
+  /* job->criticality = 1; */
+  /* job->wcet = 750; */
+  /* job->execution_time_pmf = generate_execution_time_pmf(job->wcet); */
   
   print_job_set(); 
   
